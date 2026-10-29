@@ -1,0 +1,186 @@
+# Values for open-telemetry/opentelemetry-demo (inspected: chart 0.42.6, app 3.1.0).
+# Release "astronomy-shop" in namespace "astronomy-shop".
+# Demo apps -> in-namespace "otel-collector" (DaemonSet) -> Alloy OTLP gRPC in the lgtm namespace.
+# All bundled backends are disabled.
+
+jaeger:
+  enabled: false
+prometheus:
+  enabled: false
+grafana:
+  enabled: false
+opensearch:
+  enabled: false
+otel-ebpf-profiler:
+  enabled: false
+
+components:
+  # Optional / LLM-dependent / UI-only components disabled to save memory.
+  agent:
+    enabled: false
+  chatbot:
+    enabled: false
+  mcp:
+    enabled: false
+  opamp-server:
+    enabled: false
+  firepit:
+    enabled: false
+  telemetry-docs:
+    enabled: false
+
+  load-generator:
+    envOverrides:
+      - name: LOCUST_USERS
+        value: "3"
+      - name: LOCUST_BROWSER_TRAFFIC_ENABLED
+        value: "false"
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+
+  # Small resource requests (limits keep chart defaults; maps merge).
+  accounting:
+    resources:
+      requests: {cpu: 20m, memory: 64Mi}
+  ad:
+    resources:
+      requests: {cpu: 50m, memory: 128Mi}
+  cart:
+    resources:
+      requests: {cpu: 20m, memory: 64Mi}
+  checkout:
+    resources:
+      requests: {cpu: 10m, memory: 16Mi}
+  currency:
+    resources:
+      requests: {cpu: 10m, memory: 8Mi}
+  email:
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+  fraud-detection:
+    resources:
+      requests: {cpu: 20m, memory: 128Mi}
+  frontend:
+    # Browser telemetry: chart default is http://localhost:8080/otlp-http/v1/traces (port-forward only).
+    # A relative URL resolves against the origin root where the storefront is served (single Gateway,
+    # shop at "/"), and frontend-proxy routes /otlp-http to the collector. No hostname is hardcoded.
+    envOverrides:
+      - name: PUBLIC_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+        value: /otlp-http/v1/traces
+    resources:
+      requests: {cpu: 50m, memory: 128Mi}
+  frontend-proxy:
+    # Exposed externally by a Gateway API HTTPRoute created by Terraform (backend frontend-proxy:8080).
+    service:
+      type: ClusterIP
+      port: 8080
+    ingress:
+      enabled: false
+    resources:
+      requests: {cpu: 20m, memory: 32Mi}
+  image-provider:
+    resources:
+      requests: {cpu: 10m, memory: 16Mi}
+  payment:
+    resources:
+      requests: {cpu: 20m, memory: 64Mi}
+  product-catalog:
+    resources:
+      requests: {cpu: 10m, memory: 16Mi}
+  quote:
+    resources:
+      requests: {cpu: 10m, memory: 16Mi}
+  recommendation:
+    resources:
+      requests: {cpu: 20m, memory: 128Mi}
+  shipping:
+    resources:
+      requests: {cpu: 10m, memory: 8Mi}
+  flagd:
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+  kafka:
+    resources:
+      requests: {cpu: 100m, memory: 512Mi}
+  astronomy-db:
+    resources:
+      requests: {cpu: 20m, memory: 64Mi}
+  valkey-cart:
+    resources:
+      requests: {cpu: 10m, memory: 16Mi}
+
+opentelemetry-collector:
+  # Keep k8s metadata enrichment; drop the node/cluster metric presets (Alloy scrapes cadvisor and
+  # kube-state-metrics instead) to avoid duplicate series.
+  presets:
+    kubernetesAttributes:
+      enabled: true
+    hostMetrics:
+      enabled: false
+    kubeletMetrics:
+      enabled: false
+    clusterMetrics:
+      enabled: false
+    annotationDiscovery:
+      metrics:
+        enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 400Mi
+  config:
+    receivers:
+      kafkametrics:
+        scrapers:
+          - brokers
+          - topics
+          - consumers
+        brokers:
+          - kafka:9092
+        collection_interval: 30s
+      prometheus/ad:
+        config:
+          scrape_configs:
+            - job_name: ad
+              scrape_interval: 30s
+              static_configs:
+                - targets: ["ad:9465"]
+    exporters:
+      # Bundled backend exporters (jaeger, otlp_http/prometheus, opensearch, firepit) remain defined by
+      # the chart but are referenced by no pipeline below, so the collector never connects to them.
+      # (Helm cannot delete nested subchart keys reliably, so they are not nulled.)
+      otlp_grpc/alloy:
+        endpoint: alloy.lgtm.svc.cluster.local:4317
+        tls:
+          insecure: true
+        sending_queue:
+          batch: {}
+    # The opamp extension stays defined but is dropped from service.extensions below.
+    # The span_metrics connector stays defined but unused; span metrics and the service graph are
+    # generated in Alloy.
+    service:
+      extensions: [health_check]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, resource_detection, resource, transform/sanitize_spans, gen_ai_normalizer, transform/redact_sensitive_data, redaction]
+          exporters: [otlp_grpc/alloy]
+        metrics:
+          receivers: [otlp, kafkametrics, prometheus/ad]
+          processors: [memory_limiter, resource_detection, resource]
+          exporters: [otlp_grpc/alloy]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, resource_detection, resource, transform/sanitize_logs]
+          exporters: [otlp_grpc/alloy]
+        # Profiles are unused (no ebpf profiler / firepit); drop them locally.
+        profiles:
+          receivers: [otlp]
+          processors: [memory_limiter]
+          exporters: [debug]

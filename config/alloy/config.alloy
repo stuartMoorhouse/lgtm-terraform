@@ -1,0 +1,269 @@
+// Grafana Alloy pipeline for the LGTM-on-EKS demo.
+// Deployed as release "alloy" in namespace "lgtm" (Deployment, 1 replica; see config/README.md).
+//
+//   OTLP (4317/4318) -> spanmetrics + servicegraph -> batch -> Tempo (traces) / Mimir (metrics) / Loki (logs)
+//   Pod logs (astronomy-shop, lgtm)  -> Loki
+//   cadvisor (via API server node proxy) + kube-state-metrics -> Mimir
+//
+// Assumed endpoints (all in-cluster, auth disabled / single tenant):
+//   Tempo OTLP gRPC : tempo.lgtm.svc.cluster.local:4317
+//   Loki OTLP HTTP  : http://loki.lgtm.svc.cluster.local:3100/otlp   (exporter appends /v1/logs)
+//   Loki push       : http://loki.lgtm.svc.cluster.local:3100/loki/api/v1/push
+//   Mimir push      : http://mimir-gateway.lgtm.svc.cluster.local/api/v1/push
+
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+// ---------------------------------------------------------------------------
+// OTLP ingest
+// ---------------------------------------------------------------------------
+otelcol.receiver.otlp "default" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+
+  output {
+    metrics = [otelcol.processor.batch.default.input]
+    logs    = [otelcol.processor.batch.default.input]
+    traces  = [
+      otelcol.connector.spanmetrics.default.input,
+      otelcol.connector.servicegraph.default.input,
+      otelcol.processor.batch.default.input,
+    ]
+  }
+}
+
+// RED metrics from spans: traces_span_metrics_calls_total and
+// traces_span_metrics_duration_milliseconds_{bucket,sum,count}
+otelcol.connector.spanmetrics "default" {
+  namespace              = "traces.span.metrics"
+  aggregation_temporality = "CUMULATIVE"
+
+  histogram {
+    unit = "ms"
+
+    explicit {
+      buckets = ["5ms", "10ms", "25ms", "50ms", "100ms", "250ms", "500ms", "1s", "2500ms", "5s", "10s"]
+    }
+  }
+
+  dimension {
+    name = "http.method"
+  }
+
+  dimension {
+    name = "http.status_code"
+  }
+
+  output {
+    metrics = [otelcol.processor.batch.default.input]
+  }
+}
+
+// Service graph metrics (traces_service_graph_request_*) for the Tempo service map.
+otelcol.connector.servicegraph "default" {
+  latency_histogram_buckets = ["100ms", "250ms", "1s", "5s", "10s"]
+  dimensions                = ["http.method"]
+
+  store {
+    max_items = 1000
+    ttl       = "2s"
+  }
+
+  output {
+    metrics = [otelcol.processor.batch.default.input]
+  }
+}
+
+otelcol.processor.batch "default" {
+  timeout             = "5s"
+  send_batch_size     = 8192
+  send_batch_max_size = 8192
+
+  output {
+    metrics = [otelcol.exporter.prometheus.mimir.input]
+    logs    = [otelcol.exporter.otlphttp.loki.input]
+    traces  = [otelcol.exporter.otlp.tempo.input]
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Exporters
+// ---------------------------------------------------------------------------
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo.lgtm.svc.cluster.local:4317"
+
+    tls {
+      insecure = true
+    }
+  }
+}
+
+otelcol.exporter.otlphttp "loki" {
+  client {
+    endpoint = "http://loki.lgtm.svc.cluster.local:3100/otlp"
+  }
+}
+
+// OTLP metrics -> Prometheus remote_write (resource attributes become labels, e.g. service_name).
+otelcol.exporter.prometheus "mimir" {
+  resource_to_telemetry_conversion = true
+  forward_to                       = [prometheus.remote_write.mimir.receiver]
+}
+
+prometheus.remote_write "mimir" {
+  external_labels = {
+    cluster = "lgtm-demo",
+  }
+
+  endpoint {
+    url = "http://mimir-gateway.lgtm.svc.cluster.local/api/v1/push"
+  }
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki.lgtm.svc.cluster.local:3100/loki/api/v1/push"
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pod logs (stdout/stderr) via the Kubernetes API (no host mounts needed).
+// Streams carry log_source="pod". OTLP-ingested app logs have no log_source label,
+// so dashboards select {log_source=""} to avoid double counting astronomy-shop logs.
+// ---------------------------------------------------------------------------
+discovery.kubernetes "pods" {
+  role = "pod"
+
+  namespaces {
+    names = ["astronomy-shop", "lgtm"]
+  }
+}
+
+discovery.relabel "pod_logs" {
+  targets = discovery.kubernetes.pods.targets
+
+  rule {
+    source_labels = ["__meta_kubernetes_namespace"]
+    target_label  = "k8s_namespace_name"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_name"]
+    target_label  = "k8s_pod_name"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_container_name"]
+    target_label  = "k8s_container_name"
+  }
+
+  // Fallback service name: container name, then app.kubernetes.io/name (matches OTEL service.name
+  // for the astronomy-shop components).
+  rule {
+    source_labels = ["__meta_kubernetes_pod_container_name"]
+    target_label  = "service_name"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+    regex         = "(.+)"
+    target_label  = "service_name"
+  }
+}
+
+loki.source.kubernetes "pods" {
+  targets    = discovery.relabel.pod_logs.output
+  forward_to = [loki.process.pods.receiver]
+}
+
+loki.process "pods" {
+  stage.static_labels {
+    values = {
+      log_source = "pod",
+    }
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
+
+// ---------------------------------------------------------------------------
+// Cluster metrics
+// ---------------------------------------------------------------------------
+// cadvisor, scraped through the API server node proxy.
+// Requires extra ClusterRole rule: nodes/proxy (get) -- NOT in the Alloy chart defaults.
+discovery.kubernetes "nodes" {
+  role = "node"
+}
+
+discovery.relabel "cadvisor" {
+  targets = discovery.kubernetes.nodes.targets
+
+  rule {
+    target_label = "__address__"
+    replacement  = "kubernetes.default.svc.cluster.local:443"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_node_name"]
+    regex         = "(.+)"
+    replacement   = "/api/v1/nodes/$1/proxy/metrics/cadvisor"
+    target_label  = "__metrics_path__"
+  }
+
+  rule {
+    source_labels = ["__meta_kubernetes_node_name"]
+    target_label  = "node"
+  }
+}
+
+prometheus.scrape "cadvisor" {
+  targets           = discovery.relabel.cadvisor.output
+  job_name          = "kubernetes-cadvisor"
+  scheme            = "https"
+  scrape_interval   = "30s"
+  bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
+  tls_config {
+    ca_file     = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+    server_name = "kubernetes.default.svc.cluster.local"
+  }
+
+  forward_to = [prometheus.relabel.cadvisor.receiver]
+}
+
+// Keep only what the dashboards need; drop pause containers.
+prometheus.relabel "cadvisor" {
+  rule {
+    source_labels = ["__name__"]
+    regex         = "container_(cpu_usage_seconds_total|cpu_cfs_throttled_periods_total|cpu_cfs_periods_total|memory_working_set_bytes|spec_memory_limit_bytes|network_receive_bytes_total|network_transmit_bytes_total)|machine_(cpu_cores|memory_bytes)"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["container"]
+    regex         = "POD"
+    action        = "drop"
+  }
+
+  forward_to = [prometheus.remote_write.mimir.receiver]
+}
+
+// kube-state-metrics: needs the separate prometheus-community/kube-state-metrics chart,
+// release "kube-state-metrics" in namespace "lgtm" (Service kube-state-metrics:8080).
+prometheus.scrape "kube_state_metrics" {
+  targets = [
+    {"__address__" = "kube-state-metrics.lgtm.svc.cluster.local:8080"},
+  ]
+  job_name        = "kube-state-metrics"
+  scrape_interval = "30s"
+  honor_labels    = true
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+}

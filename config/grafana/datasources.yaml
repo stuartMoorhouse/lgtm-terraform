@@ -1,0 +1,96 @@
+# Grafana datasource provisioning. Mounted into Grafana (chart value: datasources."datasources.yaml").
+# Assumes Loki runs with auth_enabled=false (single tenant), Tempo multitenancy off, and Mimir is
+# reached through mimir-gateway, which injects the default tenant ("anonymous") when no
+# X-Scope-OrgID header is sent. No tenant header is therefore required.
+# If Loki is left at its chart default (auth_enabled: true) add to the Loki datasource:
+#   jsonData: { httpHeaderName1: X-Scope-OrgID }  secureJsonData: { httpHeaderValue1: <tenant> }
+# NOTE: "$$" is how Grafana provisioning escapes a literal "$".
+apiVersion: 1
+
+prune: true
+
+datasources:
+  - name: Mimir
+    uid: mimir
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://mimir-gateway.lgtm.svc.cluster.local/prometheus
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      prometheusType: Mimir
+      timeInterval: 30s
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    orgId: 1
+    url: http://loki.lgtm.svc.cluster.local:3100
+    editable: false
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        # OTLP-ingested logs carry trace_id as Loki structured metadata.
+        - name: TraceID
+          matcherType: label
+          matcherRegex: trace_id
+          url: "$${__value.raw}"
+          datasourceUid: tempo
+          urlDisplayLabel: View trace in Tempo
+        # Fallback for plain-text/JSON pod logs that embed the trace id.
+        - name: TraceID (log line)
+          matcherType: regex
+          matcherRegex: '"?(?:trace_id|traceID|traceId)"?[=:]\s*"?([0-9a-fA-F]{32})'
+          url: "$${__value.raw}"
+          datasourceUid: tempo
+          urlDisplayLabel: View trace in Tempo
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    orgId: 1
+    url: http://tempo.lgtm.svc.cluster.local:3200
+    editable: false
+    jsonData:
+      httpMethod: GET
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+        filterByTraceID: false
+        filterBySpanID: false
+        customQuery: true
+        tags:
+          - key: service.name
+            value: service_name
+        query: '{$${__tags}} | trace_id="$${__span.traceId}"'
+      tracesToMetrics:
+        datasourceUid: mimir
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+        tags:
+          - key: service.name
+            value: service_name
+        queries:
+          - name: Request rate
+            query: 'sum(rate(traces_span_metrics_calls_total{$$__tags}[5m]))'
+          - name: Error rate
+            query: 'sum(rate(traces_span_metrics_calls_total{$$__tags, status_code="STATUS_CODE_ERROR"}[5m]))'
+          - name: p95 latency (ms)
+            query: 'histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{$$__tags}[5m])))'
+      serviceMap:
+        datasourceUid: mimir
+      nodeGraph:
+        enabled: true
+      search:
+        hide: false
+      traceQuery:
+        timeShiftEnabled: true
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+      lokiSearch:
+        datasourceUid: loki

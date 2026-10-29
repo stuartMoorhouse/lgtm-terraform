@@ -1,0 +1,112 @@
+# Mimir (mimir-distributed 6.x) shrunk to one replica per component with S3 storage via IRSA.
+# The chart defaults to the ingest-storage architecture, which needs Kafka. It is switched off
+# here (classic architecture: distributors write straight to ingesters), so no Kafka is deployed.
+mimir:
+  structuredConfig:
+    multitenancy_enabled: false
+    ingest_storage:
+      enabled: false
+    common:
+      storage:
+        backend: s3
+        s3:
+          endpoint: s3.${region}.amazonaws.com
+          region: ${region}
+    blocks_storage:
+      backend: s3
+      s3:
+        bucket_name: ${bucket}
+      storage_prefix: blocks
+    alertmanager_storage:
+      backend: s3
+      s3:
+        bucket_name: ${bucket}
+      storage_prefix: alertmanager
+    ruler_storage:
+      backend: s3
+      s3:
+        bucket_name: ${bucket}
+      storage_prefix: ruler
+    limits:
+      compactor_blocks_retention_period: ${retention}
+      max_global_series_per_user: 0
+      max_label_names_per_series: 100 # OTel resource attributes push series past the default of 30
+      ingestion_rate: 50000
+      ingestion_burst_size: 500000
+      out_of_order_time_window: 5m
+    ingester:
+      push_grpc_method_enabled: true
+      ring:
+        replication_factor: 1
+    store_gateway:
+      sharding_ring:
+        replication_factor: 1
+
+serviceAccount:
+  create: true
+  name: mimir
+  annotations:
+    eks.amazonaws.com/role-arn: ${role_arn}
+
+minio:
+  enabled: false
+kafka:
+  enabled: false
+rollout_operator:
+  enabled: false
+chunks-cache:
+  enabled: false
+index-cache:
+  enabled: false
+metadata-cache:
+  enabled: false
+results-cache:
+  enabled: false
+alertmanager:
+  enabled: false
+overrides_exporter:
+  enabled: false
+ruler:
+  enabled: false
+
+distributor:
+  replicas: 1
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+ingester:
+  replicas: 1
+  zoneAwareReplication:
+    enabled: false
+  persistentVolume:
+    size: 10Gi
+    storageClass: ${storage_class}
+  resources:
+    requests: {cpu: 200m, memory: 768Mi}
+querier:
+  replicas: 1
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+query_frontend:
+  replicas: 1
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+store_gateway:
+  replicas: 1
+  zoneAwareReplication:
+    enabled: false
+  persistentVolume:
+    size: 10Gi
+    storageClass: ${storage_class}
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+compactor:
+  replicas: 1
+  persistentVolume:
+    size: 10Gi
+    storageClass: ${storage_class}
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+gateway:
+  replicas: 1
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}

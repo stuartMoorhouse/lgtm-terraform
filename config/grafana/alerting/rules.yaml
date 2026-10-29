@@ -1,0 +1,141 @@
+# Grafana alerting file provisioning (mounted under /etc/grafana/provisioning/alerting/).
+# Datasource uids: mimir (metrics), loki (logs). Notification policy/contact points are not provisioned
+# (demo alerts only appear in the Grafana UI; they use the default contact point).
+# Metrics assumed: traces_span_metrics_* (Alloy spanmetrics), kube_pod_container_status_restarts_total (kube-state-metrics).
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: astronomy-shop
+    folder: Astronomy Shop
+    interval: 1m
+    rules:
+      - uid: as-high-error-rate
+        title: Astronomy Shop high error rate
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrorState: Error
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: mimir
+            model: {"refId": "A", "expr": "sum by (service_name) (rate(traces_span_metrics_calls_total{service_name=~\"frontend|checkout\", span_kind=\"SPAN_KIND_SERVER\", status_code=\"STATUS_CODE_ERROR\"}[5m])) / sum by (service_name) (rate(traces_span_metrics_calls_total{service_name=~\"frontend|checkout\", span_kind=\"SPAN_KIND_SERVER\"}[5m]))", "intervalMs": 1000, "maxDataPoints": 43200, "instant": true}
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model: {"type": "reduce", "expression": "A", "reducer": "last", "settings": {"mode": "dropNN"}, "refId": "B", "intervalMs": 1000, "maxDataPoints": 43200}
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model: {"type": "threshold", "expression": "B", "conditions": [{"evaluator": {"type": "gt", "params": [0.05]}}], "refId": "C", "intervalMs": 1000, "maxDataPoints": 43200}
+        annotations:
+          summary: "High error rate on {{ $labels.service_name }}"
+          description: "More than 5 percent of server spans on {{ $labels.service_name }} are errors for 5 minutes."
+        labels:
+          severity: critical
+      - uid: as-high-p95-latency
+        title: Astronomy Shop high p95 latency
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrorState: Error
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: mimir
+            model: {"refId": "A", "expr": "histogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=~\"frontend|checkout\", span_kind=\"SPAN_KIND_SERVER\"}[5m])))", "intervalMs": 1000, "maxDataPoints": 43200, "instant": true}
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model: {"type": "reduce", "expression": "A", "reducer": "last", "settings": {"mode": "dropNN"}, "refId": "B", "intervalMs": 1000, "maxDataPoints": 43200}
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model: {"type": "threshold", "expression": "B", "conditions": [{"evaluator": {"type": "gt", "params": [1500]}}], "refId": "C", "intervalMs": 1000, "maxDataPoints": 43200}
+        annotations:
+          summary: "High p95 latency on {{ $labels.service_name }}"
+          description: "p95 server span latency on {{ $labels.service_name }} above 1500 ms for 5 minutes."
+        labels:
+          severity: warning
+      - uid: as-error-log-burst
+        title: Astronomy Shop error log burst
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrorState: Error
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            model: {"refId": "A", "expr": "sum by (service_name) (count_over_time({log_source=\"\", k8s_namespace_name=\"astronomy-shop\"} | detected_level=~\"(?i)error|fatal|critical\" [5m]))", "intervalMs": 1000, "maxDataPoints": 43200, "queryType": "instant"}
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model: {"type": "reduce", "expression": "A", "reducer": "last", "settings": {"mode": "dropNN"}, "refId": "B", "intervalMs": 1000, "maxDataPoints": 43200}
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model: {"type": "threshold", "expression": "B", "conditions": [{"evaluator": {"type": "gt", "params": [100]}}], "refId": "C", "intervalMs": 1000, "maxDataPoints": 43200}
+        annotations:
+          summary: "Error log burst on {{ $labels.service_name }}"
+          description: "More than 100 error log lines in 5 minutes on {{ $labels.service_name }}."
+        labels:
+          severity: warning
+  - orgId: 1
+    name: kubernetes
+    folder: Astronomy Shop
+    interval: 1m
+    rules:
+      - uid: k8s-pod-crash-looping
+        title: Pod crash looping
+        condition: C
+        for: 2m
+        noDataState: OK
+        execErrorState: Error
+        isPaused: false
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: mimir
+            model: {"refId": "A", "expr": "sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace=~\"astronomy-shop|lgtm\"}[15m]))", "intervalMs": 1000, "maxDataPoints": 43200, "instant": true}
+          - refId: B
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: __expr__
+            model: {"type": "reduce", "expression": "A", "reducer": "last", "settings": {"mode": "dropNN"}, "refId": "B", "intervalMs": 1000, "maxDataPoints": 43200}
+          - refId: C
+            relativeTimeRange:
+              from: 1200
+              to: 0
+            datasourceUid: __expr__
+            model: {"type": "threshold", "expression": "B", "conditions": [{"evaluator": {"type": "gt", "params": [3]}}], "refId": "C", "intervalMs": 1000, "maxDataPoints": 43200}
+        annotations:
+          summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+          description: "More than 3 container restarts in 15 minutes."
+        labels:
+          severity: critical

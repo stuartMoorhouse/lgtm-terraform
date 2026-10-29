@@ -1,0 +1,46 @@
+admin:
+  existingSecret: ${admin_secret}
+  userKey: admin-user
+  passwordKey: admin-password
+
+# Exposed only through the Envoy Gateway at path /grafana (no hostname available).
+service:
+  type: ClusterIP
+  port: 80
+
+grafana.ini:
+  server:
+    # The NLB hostname is not known at plan time, so root_url uses the request-derived
+    # %(domain)s placeholders and Grafana is served from the /grafana sub path.
+    root_url: "%(protocol)s://%(domain)s/grafana/"
+    serve_from_sub_path: true
+    enforce_domain: false
+
+persistence:
+  enabled: true
+  size: 5Gi
+  storageClassName: ${storage_class}
+
+sidecar:
+  dashboards:
+    enabled: true
+    label: grafana_dashboard
+    labelValue: "1"
+    searchNamespace: ${namespace}
+    provider:
+      allowUiUpdates: false
+  datasources:
+    enabled: true
+    label: grafana_datasource
+    labelValue: "1"
+    searchNamespace: ${namespace}
+  alerts:
+    enabled: true
+    label: grafana_alert
+    labelValue: "1"
+    searchNamespace: ${namespace}
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi

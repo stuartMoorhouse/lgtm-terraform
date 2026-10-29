@@ -1,0 +1,4 @@
+apiVersion: v2
+name: edge
+description: Gateway API edge for the LGTM demo (EnvoyProxy, GatewayClass, Gateway, ClusterIssuer, Certificates). Installed as a local chart so CRD-backed resources do not need cluster access at plan time.
+version: 0.1.0

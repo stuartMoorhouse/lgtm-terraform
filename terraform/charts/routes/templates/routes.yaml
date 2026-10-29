@@ -1,0 +1,41 @@
+# Path-based routing without hostnames. Routes live in the backend namespaces, so backendRefs
+# are same-namespace and no ReferenceGrant is required; the Gateway only admits these
+# namespaces (allowedRoutes selector). Envoy Gateway prefers the longest matching prefix, so
+# /grafana wins over /.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: grafana
+  namespace: {{ .Values.grafanaNamespace }}
+spec:
+  parentRefs:
+    - name: lgtm
+      namespace: {{ .Values.gatewayNamespace }}
+      sectionName: https
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /grafana
+      backendRefs:
+        - name: grafana
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: shop
+  namespace: {{ .Values.shopNamespace }}
+spec:
+  parentRefs:
+    - name: lgtm
+      namespace: {{ .Values.gatewayNamespace }}
+      sectionName: https
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: frontend-proxy
+          port: 8080

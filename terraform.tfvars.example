@@ -1,0 +1,14 @@
+region       = "us-east-1"
+prefix       = "lgtm-demo"
+allowed_cidr = "xx.xx.xx.xx/32" # your public IP (Gateway NLB and EKS API endpoint are restricted to it)
+
+# Optional overrides
+# expected_account_id = "461485115270"
+# node_instance_types = ["t3.xlarge"]
+# node_desired_size   = 2
+# retention_days      = 7
+
+#  AWS tags (applied via provider default_tags)
+tags = {
+
+}

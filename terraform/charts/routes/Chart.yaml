@@ -1,0 +1,4 @@
+apiVersion: v2
+name: routes
+description: HTTPRoutes for Grafana and the Astronomy Shop frontend-proxy, attached to the shared Gateway.
+version: 0.1.0

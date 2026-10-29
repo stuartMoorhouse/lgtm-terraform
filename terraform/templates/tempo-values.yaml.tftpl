@@ -1,0 +1,35 @@
+# Tempo monolithic (single binary, chart grafana/tempo 1.x / Tempo 2.x) with S3 storage via IRSA.
+tempo:
+  retention: ${retention}
+  storage:
+    trace:
+      backend: s3
+      s3:
+        bucket: ${bucket}
+        endpoint: s3.${region}.amazonaws.com
+        region: ${region}
+        insecure: false
+      wal:
+        path: /var/tempo/wal
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "0.0.0.0:4317"
+        http:
+          endpoint: "0.0.0.0:4318"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+
+serviceAccount:
+  create: true
+  name: tempo
+  annotations:
+    eks.amazonaws.com/role-arn: ${role_arn}
+
+persistence:
+  enabled: true
+  size: 10Gi
+  storageClassName: ${storage_class}
