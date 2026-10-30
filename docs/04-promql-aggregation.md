@@ -3,6 +3,8 @@
 Aggregation collapses many series into fewer. The pattern is `operator by (labels) (expression)` or
 `operator without (labels) (expression)`.
 
+**How to run these:** open **Explore**, choose the `Mimir` datasource, switch the editor from **Builder** to **Code**, paste a query, set the time range to **Last 1 hour** and click **Run query**. Every query in this tutorial is PromQL. Full steps are in [tutorial 1](01-stack-overview-and-access.md#running-queries-in-grafana-explore).
+
 ## by and without
 
 `by` keeps only the listed labels. `without` drops the listed labels and keeps everything else.

@@ -3,6 +3,8 @@
 A counter only ever goes up (and resets to zero on restart). The raw value is rarely useful. You want how fast it grows.
 Counter names end in `_total` by convention.
 
+**How to run these:** open **Explore**, choose the `Mimir` datasource, switch the editor from **Builder** to **Code**, paste a query, set the time range to **Last 1 hour** and click **Run query**. Every query in this tutorial is PromQL. Full steps are in [tutorial 1](01-stack-overview-and-access.md#running-queries-in-grafana-explore).
+
 ## rate()
 
 `rate(counter[window])` is the per-second average increase over the window, handling resets:
@@ -58,7 +60,7 @@ sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{names
 | Long (`[1h]`) | Smooth, but slow to show changes |
 
 In Grafana dashboards use the built-in `$__rate_interval` variable so the window adapts to the zoom level. The tutorials use fixed
-windows so they also work in plain API calls.
+windows so you can paste them anywhere.
 
 ## Error ratio
 

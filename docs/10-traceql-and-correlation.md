@@ -3,6 +3,8 @@
 TraceQL selects spans by their attributes. A query is a set of span filters in braces, optionally combined with
 structural operators and aggregates.
 
+**How to run these:** open **Explore**, choose the `Tempo` datasource, click the **TraceQL** tab above the query box, paste a query, set the time range to **Last 1 hour** and click **Run query**. Queries in this tutorial are TraceQL unless a code block says otherwise (a `promql` block goes to `Mimir`, a `logql` block to `Loki`). Full steps are in [tutorial 1](01-stack-overview-and-access.md#running-queries-in-grafana-explore).
+
 ## Attribute scopes
 
 | Prefix | Scope | Example |
@@ -173,13 +175,3 @@ The point of a single stack is moving between signals without losing context. A 
    whether this one trace is typical or an outlier.
 
 Exemplars and derived fields tie the same loop together. The Loki datasource turns `trace_id` into a link to Tempo.
-
-## Verifying the whole pipeline
-
-`scripts/test-doc-queries.py` runs every query in this `docs/` folder against live Mimir, Loki and Tempo. Use it
-after any change to Alloy or the datasources, since a rename in the pipeline (for example span-metric label names)
-breaks queries silently.
-
-```bash
-python3 -I scripts/test-doc-queries.py
-```

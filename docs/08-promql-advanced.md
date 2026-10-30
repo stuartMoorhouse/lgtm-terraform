@@ -3,6 +3,8 @@
 These are the techniques you reach for once the basics work: comparing over time, joining series, detecting missing
 data and forecasting.
 
+**How to run these:** open **Explore**, choose the `Mimir` datasource, switch the editor from **Builder** to **Code**, paste a query, set the time range to **Last 1 hour** and click **Run query**. Every query in this tutorial is PromQL. Full steps are in [tutorial 1](01-stack-overview-and-access.md#running-queries-in-grafana-explore).
+
 ## offset: compare with the past
 
 Request rate now versus the same time one hour ago:

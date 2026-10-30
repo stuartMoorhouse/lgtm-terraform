@@ -2,7 +2,7 @@
 
 PromQL is the query language for Mimir. Everything starts with a selector: a metric name plus optional label matchers.
 
-Run these in Grafana Explore against the Mimir datasource.
+**How to run these:** open **Explore**, choose the `Mimir` datasource, switch the editor from **Builder** to **Code**, paste a query, set the time range to **Last 1 hour** and click **Run query**. Every query in this tutorial is PromQL. Full steps are in [tutorial 1](01-stack-overview-and-access.md#running-queries-in-grafana-explore).
 
 ## Instant vector selectors
 
@@ -74,13 +74,6 @@ Which values does a label take? Group by it:
 
 ```promql
 count by (status_code) (traces_span_metrics_calls_total)
-```
-
-The same discovery through the HTTP API, which Grafana's label browser uses:
-
-```bash
-curl -s http://localhost:9009/prometheus/api/v1/label/service_name/values
-curl -s http://localhost:9009/prometheus/api/v1/labels
 ```
 
 ## Range vectors

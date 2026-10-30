@@ -3,6 +3,8 @@
 LogQL mirrors PromQL's structure. A query is a stream selector, followed by a pipeline that filters and parses lines.
 Wrap it in a function such as `rate()` and you get a metric.
 
+**How to run these:** open **Explore**, choose the `Loki` datasource, switch the editor from **Builder** to **Code**, paste a query, set the time range to **Last 1 hour** and click **Run query**. Every query in this tutorial is LogQL. Full steps are in [tutorial 1](01-stack-overview-and-access.md#running-queries-in-grafana-explore).
+
 ## Labels in this stack
 
 Loki indexes only a small set of labels (the rest are structured metadata, queryable after the selector).
@@ -18,11 +20,7 @@ Useful stream labels:
 Two ingest paths feed Loki. The demo apps send logs over OTLP and carry rich metadata (`severity_text`,
 `trace_id`). The LGTM components' own logs are tailed from stdout by Alloy and carry `log_source="pod"`.
 
-Discover label values:
-
-```bash
-curl -s http://localhost:3100/loki/api/v1/label/service_name/values
-```
+Discover label values in Explore: with `Loki` selected, stay on **Builder**, open the **Label filters** dropdown and pick a label such as `service_name`. The value dropdown lists every value Loki has seen.
 
 ## Stream selectors
 

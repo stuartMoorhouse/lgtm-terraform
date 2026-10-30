@@ -15,6 +15,8 @@ Alloy's `spanmetrics` connector turns every span into metrics, so all three come
 
 `span_kind="SPAN_KIND_SERVER"` selects spans where the service handled an incoming request. Use `SPAN_KIND_CLIENT` for outgoing calls.
 
+**How to run these:** open **Explore**, choose the `Mimir` datasource, switch the editor from **Builder** to **Code**, paste a query, set the time range to **Last 1 hour** and click **Run query**. Every query in this tutorial is PromQL. Full steps are in [tutorial 1](01-stack-overview-and-access.md#running-queries-in-grafana-explore).
+
 ## Rate
 
 Requests per second for each service:

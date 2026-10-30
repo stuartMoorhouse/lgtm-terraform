@@ -15,6 +15,8 @@ In this stack there are two good sources of latency histograms:
 | `traces_span_metrics_duration_milliseconds_bucket` | milliseconds | Derived from traces by Alloy, covers every service |
 | `http_server_request_duration_seconds_bucket` | seconds | Emitted by the frontend's own instrumentation |
 
+**How to run these:** open **Explore**, choose the `Mimir` datasource, switch the editor from **Builder** to **Code**, paste a query, set the time range to **Last 1 hour** and click **Run query**. Every query in this tutorial is PromQL. Full steps are in [tutorial 1](01-stack-overview-and-access.md#running-queries-in-grafana-explore).
+
 ## Percentiles with histogram_quantile
 
 The recipe is always the same: `rate()` the buckets, sum by `le` (plus any label you want to keep), then

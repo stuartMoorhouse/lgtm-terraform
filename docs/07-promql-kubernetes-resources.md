@@ -7,6 +7,8 @@ Two sources describe the cluster:
 | cAdvisor (scraped by Alloy) | `container_*`, `machine_*` | Actual CPU, memory and network use |
 | kube-state-metrics (`lgtm` namespace) | `kube_*` | Desired and observed state of Kubernetes objects |
 
+**How to run these:** open **Explore**, choose the `Mimir` datasource, switch the editor from **Builder** to **Code**, paste a query, set the time range to **Last 1 hour** and click **Run query**. Every query in this tutorial is PromQL. Full steps are in [tutorial 1](01-stack-overview-and-access.md#running-queries-in-grafana-explore).
+
 ## Nodes
 
 Number of nodes and total cores:
