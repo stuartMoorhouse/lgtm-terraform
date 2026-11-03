@@ -21,8 +21,6 @@ resource "aws_internet_gateway" "main" {
   tags   = merge(local.tags, { Name = "${local.name}-igw" })
 }
 
-# Subnets depend on the GuardDuty cleanup so that, on destroy, cleanup runs after everything
-# inside the subnets (EKS, nodes, fck-nat) is gone and before subnets/VPC are deleted.
 resource "aws_subnet" "public" {
   count                   = length(local.azs)
   vpc_id                  = aws_vpc.main.id
@@ -33,8 +31,6 @@ resource "aws_subnet" "public" {
     Name                     = "${local.name}-public-${local.azs[count.index]}"
     "kubernetes.io/role/elb" = "1"
   })
-
-  depends_on = [null_resource.vpc_guardduty_cleanup]
 }
 
 resource "aws_subnet" "private" {
@@ -46,8 +42,6 @@ resource "aws_subnet" "private" {
     Name                              = "${local.name}-private-${local.azs[count.index]}"
     "kubernetes.io/role/internal-elb" = "1"
   })
-
-  depends_on = [null_resource.vpc_guardduty_cleanup]
 }
 
 resource "aws_route_table" "public" {
@@ -144,7 +138,7 @@ resource "aws_instance" "fck_nat" {
 
   tags = merge(local.tags, { Name = "${local.name}-fck-nat" })
 
-  depends_on = [aws_internet_gateway.main]
+  depends_on = [aws_internet_gateway.main, null_resource.vpc_guardduty_cleanup]
 }
 
 resource "aws_route" "private_nat" {
@@ -158,9 +152,12 @@ resource "aws_route" "private_nat" {
 # provisioner removes them: endpoints, then ENIs (poll up to 3 min), then non-default SGs
 # (retry every 30s up to 5 min). SG deletion errors are never swallowed.
 #
-# Destroy ordering: subnets depend on this resource, so EKS, nodes and fck-nat (which live in
-# the subnets) are destroyed first, then this runs, then subnets and VPC are deleted.
+# Destroy ordering: terraform destroys dependents first. EKS and fck-nat depend on this resource
+# (so they are destroyed before it runs) and this depends on the subnets (so it runs before they
+# are deleted).
 resource "null_resource" "vpc_guardduty_cleanup" {
+  depends_on = [aws_subnet.public, aws_subnet.private]
+
   triggers = {
     vpc_id  = aws_vpc.main.id
     region  = var.region

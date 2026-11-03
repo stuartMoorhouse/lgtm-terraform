@@ -62,7 +62,7 @@ module "eks" {
   tags = local.tags
 
   # Nodes need egress (via fck-nat) to join the cluster and pull images.
-  depends_on = [aws_route.private_nat]
+  depends_on = [aws_route.private_nat, null_resource.vpc_guardduty_cleanup]
 }
 
 # EBS CSI driver IRSA role
